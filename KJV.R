@@ -167,12 +167,26 @@ ggplot(data = KJVposneg, aes(x = linenumber, y = value, color = sentiment, fill 
 
 
 # Make a new data frame to calculate the fourier transforms
-#Uses get_sentiment() which returns numeric vector of sentiment values, one value for each input sentence.
+#Uses get_sentiment() which returns numeric vector of sentiment values, 
+#one value for each input sentence, i.e. the (positive - negative) emotion totals.
 KJVsentiment <- data.frame(cbind(linenumber = seq_along(chunksKJV), sentiment=get_sentiment(chunksKJV, method = "nrc")))
 
 KJVsentiment$testament <- "Old Testament"
 KJVsentiment[BookStart[40]:length(chunksKJV),'testament'] <- "New Testament"
 KJVsentiment$testament <- as.factor(KJVsentiment$testament)
+
+
+#Plot single sentiment values
+ggplot(data = KJVsentiment, aes(x = linenumber, y = sentiment)) +
+  facet_wrap(~testament, nrow = 2) +
+  geom_bar(stat = "identity", position = "dodge", color = "midnightblue") + 
+  theme_minimal() +
+  ylab("Sentiment") +
+  ggtitle(expression(paste("Sentiment in ", italic("King James Bible")))) +
+  theme(axis.title.x=element_blank()) +
+  theme(axis.ticks.x=element_blank()) +
+  theme(axis.text.x=element_blank()) #+
+  theme(legend.justification=c(1,1), legend.position=c(1, 0.71))
 
 #get_transformed_values() -
 # Converts input values into a standardized set of filtered and reverse transformed 
@@ -193,4 +207,4 @@ ggplot(data = KJVft, aes(x = linenumber, y = ft)) +
   ggtitle(expression(paste("Sentiment in ", italic("King James Bible")))) +
   theme(axis.title.x=element_blank()) +
   theme(axis.ticks.x=element_blank()) +
-  theme(axis.text.x=element_blank()) #+
+  theme(axis.text.x=element_blank())  
