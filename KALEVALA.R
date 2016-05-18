@@ -25,14 +25,11 @@ tail(chunksKALEVALA)
 head(chunksKALEVALA)
 
 library(SnowballC)
-
-test3 <- wordStem(unlist(strsplit(test2," ")), language = "finnish")
-
-#do.call(merge.xts, c( lapply(list.of.tickers, Yahoo.Fetch), all=FALSE ))
-
-test4 <- do.call(function(x) wordStem(x, language = "finnish"),  strsplit(test2," "))
-
-stemsKALEVALA <- data.frame(wordStem(unlist(strsplit(chunksKALEVALA[1]," ")), language = "finnish"))
-for (idx in 2:length(chunksKALEVALA)){
-  rbind(stemsKALEVALA, wordStem(unlist(strsplit(chunksKALEVALA[idx]," ")), language = "finnish"))
+stemsKALEVALA <- data.frame(matrix("NA", ncol = 2, nrow = length(chunksKALEVALA)), stringsAsFactors=FALSE)
+colnames(stemsKALEVALA) <- c("chunks","stems") 
+for (idx in 1:length(chunksKALEVALA)){
+  stemsKALEVALA[idx,1] <- chunksKALEVALA[idx]
+  x <- lapply(strsplit(chunksKALEVALA[idx]," "), wordStem, language = "finnish")
+  #stemsKALEVALA[idx,2] <- as.character(lapply(strsplit(chunksKALEVALA[idx]," "), wordStem, language = "finnish"))
+  stemsKALEVALA[idx,2] <- as.character(x)
 }
