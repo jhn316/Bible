@@ -1,0 +1,244 @@
+---
+title: "BibleSentimentAnalysis"
+author: "Nissanka Wickremasinghe"
+date: "18 toukokuuta 2016"
+output: html_document
+---
+
+Sentiment analysis of the bible in English and Finnish
+
+The Bible is the most sold book in the world and has a massive impact on the 
+political, social and cutural history of the world. It is also easily available
+for free in numerous languages and numerous translations. It does not form a single entity
+however, and some versions of the Bible have more books than others. The Ethiopean
+bible has the most and the Jewish Bible has the least. It covers a wide range of 
+topics, from history and myth all the way down to romantic poetry. This is a first attempt
+to study the variation of sentiment and the "shape" of the story of the King James Version 
+of the English bible.
+
+Install the required packages
+```{r}
+library(readr)
+library(stringr)
+library(syuzhet)
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(ggthemes)
+```
+
+
+First read the data into R. Skip the first 94 lines of commentary at the top
+and used nmax=-1 to read to the end of the file and manually found that 371 lines below are 
+commentary so we remove from bottom
+```{r}
+rawKJV <- read_lines("./pg30.txt", skip = 94, n_max = 114473-371) 
+```
+
+Remove all "" marks and remove all those lines
+```{r}
+noquotesKJV <- rawKJV[nchar(rawKJV)!=0]
+```
+
+Create levels for OT and NT - find where they being and end
+```{r}
+which(grepl("Matthew", noquotesKJV)) #find where the Books start - NT starts at line 63600
+```
+
+Create levels for chapter names - find where they being and end
+```{r}
+which(grepl("Book", noquotesKJV)) #find where each Book start
+```
+
+Remove verse numbers and leading spaces and find the locations of where the books
+start in the nospaceKJV vector.
+```{r}
+nonumKJV <- sub("([0-9]+)\\:([0-9]+)\\:([0-9]+)","",noquotesKJV)
+nospaceKJV <- c(sub("^\\s+", "", nonumKJV), rep("",6))
+bookLocations<- grep("Book", nospaceKJV)
+```
+
+In order to get sensible reading of the sentiments, we combined 10 lines of text 
+into chunks and perform the sentimet analysis chunk by chunk.
+```{r}
+chunksKJV <- c(" ")
+for (i in seq_along(nospaceKJV)){
+  if (i%in% bookLocations){
+    chunksKJV[(length(chunksKJV))] <- nospaceKJV[i]
+  }
+  else{
+    if ((i%%10 == 1)&(!(i%in% bookLocations))){
+      idx <- length(chunksKJV)+1
+      chunksKJV[idx] <- str_c(nospaceKJV[i], 
+                                                nospaceKJV[i+1],
+                                                nospaceKJV[i+2],
+                                                nospaceKJV[i+3],
+                                                nospaceKJV[i+4],
+                                                nospaceKJV[i+5],
+                                                nospaceKJV[i+6],
+                                                nospaceKJV[i+7],
+                                                nospaceKJV[i+8],
+                                                nospaceKJV[i+9], sep = " ")
+    }
+  }
+}
+tail(chunksKJV)
+head(chunksKJV)
+```
+
+We then create a vector which contains the locations of the start of each book in the 
+chunksKJV vector
+```{r}
+BookStart <- c()
+for (i in 1:66){
+  if (i<10){
+    BookStart <- c(BookStart, grep(paste("Book 0", i, sep = ""), chunksKJV))
+  }
+  else{
+    BookStart <- c(BookStart, grep(paste("Book ", i, sep = ""), chunksKJV))
+  }
+}
+BookStart 
+```
+
+Create a function that will extract individual books (BookNum must be input by user)
+Call extractbook(n = booknumber)
+```{r}
+extractbook <- function(BookNum){
+  if (!BookNum %in% 1:66){
+    stop("Enter a number between 1 and 66 inclusive")
+  }
+  else if (BookNum<=65){
+    chunksKJV[BookStart[BookNum]:BookStart[BookNum+1]-1]
+  }
+  else
+    chunksKJV[BookStart[BookNum]:length(chunksKJV)]
+} 
+```
+
+We use the NRC Word-Emotion Association Lexicon to perform sentiment analysis using the 
+"syuzhet" package and create a data frame to store the sentiments (8 sentiment types). 
+We then create "testament" factors using the fact that Book 1 to 39 is the Old Testament
+and book 40 to 66 is the New Testament.
+```{r}
+KJVnrc <- cbind(linenumber = seq_along(chunksKJV), get_nrc_sentiment(chunksKJV))
+KJVnrc$testament <- "Old Testament"
+KJVnrc[BookStart[40]:length(chunksKJV),'testament'] <- "New Testament"
+KJVnrc$testament <- as.factor(KJVnrc$testament)
+```
+
+We then make a Book name factor for each book and restart a line number for each new book.
+```{r}
+books <- c()
+booknum <- c()
+for(i in 1:66){
+  books <- c(books,strsplit(chunksKJV[BookStart],"    ")[[i]][[3]])
+  booknum <- c(booknum,strsplit(chunksKJV[BookStart],"    ")[[i]][[1]])
+}
+
+KJVnrc$book <- " "
+for(j in BookStart){
+  KJVnrc[j:length(chunksKJV),'book'] <- unlist(strsplit(chunksKJV[j],"    "))[3]
+  KJVnrc[j:length(chunksKJV),'booknum'] <- unlist(strsplit(chunksKJV[j],"    "))[1]
+}
+KJVnrc$testament <- as.factor(KJVnrc$testament)
+KJVnrc$book <- as.factor(KJVnrc$book)
+KJVnrc$booknum <- as.factor(KJVnrc$booknum)
+
+for(k in books){
+  Booklength <- length(KJVnrc$linenumber[KJVnrc$book == k])
+  KJVnrc$linenumber[KJVnrc$book == k] <- 1:Booklength
+}
+```
+
+Overall postive vs. negative sentiment in the text of KJV
+```{r}
+KJVnrc$negative <- -KJVnrc$negative
+```
+
+And then by testament
+```{r}
+KJVposneg <- KJVnrc %>% select(linenumber, testament, positive, negative) %>%
+  melt(id = c("linenumber", "testament"))
+names(KJVposneg) <- c("linenumber", "testament", "sentiment", "value")
+View(KJVposneg)
+```
+
+We first plot the sentiment as points on a chart
+```{r}
+ggplot(data = KJVposneg, aes(x = linenumber, y = value, color = sentiment)) +
+  facet_wrap(~testament, nrow = 3) +
+  geom_point(size = 4, alpha = 0.5) + theme_minimal() +
+  ylab("Sentiment") + 
+  ggtitle(expression(paste("Positive and Negative Sentiment in ", 
+                           italic("King James Bible")))) +
+  theme(legend.title=element_blank()) + 
+  theme(axis.title.x=element_blank()) +
+  theme(axis.ticks.x=element_blank()) +
+  theme(axis.text.x=element_blank()) +
+    scale_color_manual(values = c("aquamarine3", "midnightblue"))
+```
+
+The as a barchart
+```{r}
+ggplot(data = KJVposneg, aes(x = linenumber, y = value, color = sentiment, fill = sentiment)) +
+  facet_wrap(~testament, nrow = 3) +
+  geom_bar(stat = "identity", position = "dodge") + theme_minimal() +
+  ylab("Sentiment") +
+  ggtitle(expression(paste("Positive and Negative Sentiment in ", 
+                           italic("King James Bible")))) +
+  theme(legend.title=element_blank()) +
+  theme(axis.title.x=element_blank()) +
+  theme(axis.ticks.x=element_blank()) +
+  theme(axis.text.x=element_blank()) +
+  theme(legend.justification=c(1,1), legend.position=c(1, 0.71)) 
+  scale_fill_manual(values = c("aquamarine3", "midnightblue")) +
+  scale_color_manual(values = c("aquamarine3", "midnightblue"))
+```
+
+The we make a new data frame to calculate the fourier transforms
+This uses get_sentiment() which returns numeric vector of sentiment values, 
+one value for each input sentence, i.e. the (positive - negative) emotion totals.
+```{r}
+KJVsentiment <- data.frame(cbind(linenumber = seq_along(chunksKJV), sentiment=get_sentiment(chunksKJV, method = "nrc")))
+KJVsentiment$testament <- "Old Testament"
+KJVsentiment[BookStart[40]:length(chunksKJV),'testament'] <- "New Testament"
+KJVsentiment$testament <- as.factor(KJVsentiment$testament)
+```
+
+Plot single sentiment values
+```{r}
+ggplot(data = KJVsentiment, aes(x = linenumber, y = sentiment)) +
+  facet_wrap(~testament, nrow = 2) +
+  geom_bar(stat = "identity", position = "dodge", color = "midnightblue") + 
+  theme_minimal() +
+  ylab("Sentiment") +
+  ggtitle(expression(paste("Sentiment in ", italic("King James Bible")))) +
+  theme(axis.title.x=element_blank()) +
+  theme(axis.ticks.x=element_blank()) +
+  theme(axis.text.x=element_blank()) #+
+  theme(legend.justification=c(1,1), legend.position=c(1, 0.71))
+```
+
+get_transformed_values() - Converts input values into a standardized set of filtered and reverse transformed 
+values for easy plotting and/or comparison.
+```{r}
+KJVft <- as.numeric(get_transformed_values(KJVsentiment$sentiment, 
+                                             low_pass_size = 3,
+                                             scale_vals = TRUE,
+                                             scale_range = FALSE))
+KJVft <- data.frame(cbind(linenumber = seq_along(KJVft), ft = KJVft))
+View(KJVft)
+```
+
+Plot the fourier transforms
+```{r}
+ggplot(data = KJVft, aes(x = linenumber, y = ft)) +
+  geom_bar(stat = "identity", alpha = 0.8, color = "midnightblue", fill = "midnightblue") +
+  theme_minimal() +
+  ylab("Transformed Sentiment Value") +
+  ggtitle(expression(paste("Sentiment in ", italic("King James Bible")))) +
+  theme(axis.title.x=element_blank()) +
+  theme(axis.ticks.x=element_blank()) +
+  theme(axis.text.x=element_blank())  
+```
